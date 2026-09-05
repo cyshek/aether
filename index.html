@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>ÆTHER — particle field</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<meta name="description" content="A GPU particle field of 120,000 points that dissolves and re-forms between geometries. WebGL, custom GLSL, one draw call." />
+<meta name="theme-color" content="#04060b" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="ÆTHER — particle field" />
+<meta property="og:description" content="120,000 points. One draw call. Matter remembers its shape." />
+<meta property="og:image" content="preview.jpg" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="ÆTHER — particle field" />
+<meta name="twitter:description" content="120,000 points. One draw call. Matter remembers its shape." />
+<meta name="twitter:image" content="preview.jpg" />
+<style>
+  :root{
+    --ink:#e9edf7;
+    --dim:#7f8aa3;
+    --accent:#6cf0d0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scrollbar-color:#5a6479 rgba(255,255,255,.04);scrollbar-width:auto}
+  html,body{min-height:100%;background:#04060b;color:var(--ink);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+  /* plain, always-visible scrollbar — no glow, no gradient */
+  ::-webkit-scrollbar{width:12px}
+  ::-webkit-scrollbar-track{background:rgba(255,255,255,.03)}
+  ::-webkit-scrollbar-thumb{background:#4a5364;border-radius:99px;
+    border:3px solid #04060b;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:#6b7689;background-clip:padding-box}
+
+  /* kill text selection while dragging the field */
+  body.dragging{user-select:none;-webkit-user-select:none;cursor:grabbing}
+  body.dragging *{cursor:grabbing !important}
+  canvas#gl{cursor:grab}
+  canvas#gl{position:fixed;inset:0;width:100vw;height:100vh;display:block;z-index:0;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>")}
+  .vig{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%,transparent 35%,rgba(2,4,9,.85) 100%)}
+
+  header{position:fixed;top:0;left:0;right:0;z-index:5;display:flex;justify-content:space-between;
+    align-items:center;padding:26px 34px;mix-blend-mode:difference}
+  .brand{font-weight:700;letter-spacing:.42em;font-size:12px;text-transform:uppercase}
+  nav{display:flex;gap:26px}
+  nav a{color:var(--dim);text-decoration:none;font-size:11px;letter-spacing:.22em;
+    text-transform:uppercase;transition:color .3s}
+  nav a:hover{color:var(--ink)}
+
+  main{position:relative;z-index:4}
+  section{min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+    padding:0 clamp(24px,7vw,140px)}
+
+  .hero h1{font-size:clamp(52px,12.5vw,190px);line-height:.86;font-weight:800;letter-spacing:-.045em;
+    text-transform:uppercase}
+  .hero h1 span{display:block}
+  .hero h1 .ghost{-webkit-text-stroke:1px rgba(233,237,247,.55);color:transparent}
+  .sub{margin-top:30px;max-width:44ch;color:var(--dim);font-size:15px;line-height:1.75}
+  .kicker{font-size:11px;letter-spacing:.35em;text-transform:uppercase;color:var(--accent);
+    margin-bottom:26px}
+
+  .panel{max-width:640px;backdrop-filter:blur(14px);background:rgba(8,12,22,.42);
+    border:1px solid rgba(233,237,247,.09);border-radius:20px;padding:clamp(28px,4vw,52px)}
+  .panel h2{font-size:clamp(30px,5vw,58px);letter-spacing:-.03em;line-height:1.03;margin-bottom:20px}
+  .panel p{color:var(--dim);line-height:1.8;font-size:15px}
+  .stats{display:flex;gap:46px;margin-top:38px;flex-wrap:wrap}
+  .stat b{display:block;font-size:34px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .stat small{color:var(--dim);font-size:10px;letter-spacing:.24em;text-transform:uppercase}
+
+  .shapes{position:fixed;left:34px;bottom:34px;z-index:6;display:flex;gap:9px}
+  .shapes button{appearance:none;cursor:pointer;background:rgba(255,255,255,.04);color:var(--dim);
+    border:1px solid rgba(233,237,247,.14);border-radius:999px;padding:9px 17px;font-size:10px;
+    letter-spacing:.2em;text-transform:uppercase;transition:.25s;font-family:inherit}
+  .shapes button:hover{color:var(--ink);border-color:rgba(233,237,247,.4)}
+  .shapes button.on{background:var(--accent);color:#04060b;border-color:var(--accent);font-weight:700}
+
+  .scroll-hint{position:fixed;right:34px;bottom:34px;z-index:6;font-size:10px;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--dim);writing-mode:vertical-rl}
+  .scroll-hint::after{content:"";display:block;width:1px;height:52px;margin:12px auto 0;
+    background:linear-gradient(var(--accent),transparent);animation:drop 2.2s infinite}
+  @keyframes drop{0%{transform:scaleY(0);transform-origin:top}
+    50%{transform:scaleY(1);transform-origin:top}
+    51%{transform:scaleY(1);transform-origin:bottom}
+    100%{transform:scaleY(0);transform-origin:bottom}}
+
+  .reveal{opacity:0;transform:translateY(38px);transition:opacity 1s cubic-bezier(.2,.7,.2,1),transform 1s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+  footer{position:relative;z-index:4;padding:70px clamp(24px,7vw,140px) 110px;color:var(--dim);
+    font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+  @media (max-width:640px){.shapes{left:18px;bottom:18px}.scroll-hint{display:none}nav{display:none}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="grain"></div><div class="vig"></div>
+
+<header>
+  <div class="brand">Æther</div>
+  <nav><a href="#field">Field</a><a href="#engine">Engine</a><a href="#end">End</a></nav>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="reveal">
+      <div class="kicker">120,000 points · one draw call</div>
+      <h1><span>Matter</span><span class="ghost">Remembers</span><span>Its Shape</span></h1>
+      <p class="sub">A GPU particle field that dissolves and re-forms between geometries.
+      Every point carries its own noise seed, curl-drift and easing curve — solved
+      entirely in a vertex shader. Drag to orbit. Pick a form below.</p>
+    </div>
+  </section>
+
+  <section id="field">
+    <div class="panel reveal">
+      <h2>No meshes.<br/>Only points.</h2>
+      <p>Target positions for each form are baked into buffer attributes once, at load.
+      The morph is a single uniform sweeping 0→1 while curl noise pushes points off their
+      geodesic so the transition billows instead of sliding. Nothing touches the CPU per frame.</p>
+      <div class="stats">
+        <div class="stat"><b id="s-pts">120k</b><small>points</small></div>
+        <div class="stat"><b id="s-fps">—</b><small>fps</small></div>
+        <div class="stat"><b>1</b><small>draw call</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="engine">
+    <div class="panel reveal">
+      <h2>Additive light,<br/>not lit surfaces.</h2>
+      <p>Each point renders as a soft radial sprite in additive blend, so density becomes
+      luminance — thin regions read as haze, folds read as hot cores. Colour is a function
+      of radial velocity, so the field flushes cyan as it collapses and cools to violet as it settles.</p>
+    </div>
+  </section>
+
+  <section id="end">
+    <div class="panel reveal">
+      <h2>Built in one file.</h2>
+      <p>Single HTML document. three.js, custom GLSL, zero build step, zero dependencies
+      beyond the renderer. View source — the whole thing is right there.</p>
+    </div>
+  </section>
+</main>
+
+<footer>Æther · WebGL particle study · drag to orbit · scroll to read</footer>
+
+<div class="shapes">
+  <button data-i="0" class="on">Sphere</button>
+  <button data-i="1">Torus</button>
+  <button data-i="2">Galaxy</button>
+  <button data-i="3">Cube</button>
+  <button data-i="4">Wave</button>
+</div>
+<div class="scroll-hint">Scroll</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+"three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const COUNT = 120000;
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:false, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));
+renderer.setSize(innerWidth, innerHeight);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, .1, 100);
+camera.position.set(0,0,15);
+
+/* ---------- shape generators ---------- */
+const R = () => Math.random();
+function sphere(i,n){ // fibonacci
+  const y = 1 - (i/(n-1))*2, r = Math.sqrt(Math.max(0,1-y*y));
+  const th = Math.PI*(3-Math.sqrt(5))*i;
+  return [Math.cos(th)*r*4.6, y*4.6, Math.sin(th)*r*4.6];
+}
+function torus(){
+  const u = R()*Math.PI*2, v = R()*Math.PI*2, Rr=3.5, r=1.45;
+  return [(Rr+r*Math.cos(v))*Math.cos(u), r*Math.sin(v), (Rr+r*Math.cos(v))*Math.sin(u)];
+}
+function galaxy(i,n){
+  const arms=4, t=Math.pow(R(),.55), a=Math.floor(R()*arms)/arms*Math.PI*2;
+  const ang=a + t*3.4, rad=t*6.4;
+  const sp=(1-t)*.9+.15;
+  return [Math.cos(ang)*rad+(R()-.5)*sp, (R()-.5)*sp*1.2*(1-t*.7), Math.sin(ang)*rad+(R()-.5)*sp];
+}
+function cube(){ // surface only
+  const s=3.4, f=Math.floor(R()*6), a=(R()-.5)*2*s, b=(R()-.5)*2*s;
+  return [[s,a,b],[-s,a,b],[a,s,b],[a,-s,b],[a,b,s],[a,b,-s]][f];
+}
+function wave(){
+  const x=(R()-.5)*13, z=(R()-.5)*13, d=Math.hypot(x,z);
+  return [x, Math.sin(d*1.15)*1.9*Math.exp(-d*.16), z];
+}
+const gens=[sphere,torus,galaxy,cube,wave];
+
+const geo = new THREE.BufferGeometry();
+const attrs = gens.map((g,gi)=>{
+  const a = new Float32Array(COUNT*3);
+  for(let i=0;i<COUNT;i++){const p=g(i,COUNT); a[i*3]=p[0];a[i*3+1]=p[1];a[i*3+2]=p[2];}
+  return a;
+});
+geo.setAttribute('position', new THREE.BufferAttribute(attrs[0].slice(),3));
+geo.setAttribute('aFrom', new THREE.BufferAttribute(attrs[0].slice(),3));
+geo.setAttribute('aTo',   new THREE.BufferAttribute(attrs[1].slice(),3));
+const seed = new Float32Array(COUNT);
+for(let i=0;i<COUNT;i++) seed[i]=Math.random();
+geo.setAttribute('aSeed', new THREE.BufferAttribute(seed,1));
+geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 20);
+
+const uniforms = {
+  uTime:{value:0}, uMorph:{value:0}, uSize:{value:renderer.getPixelRatio()*2.3},
+  uHueA:{value:new THREE.Color('#4de2ff')}, uHueB:{value:new THREE.Color('#b073ff')},
+  uPointer:{value:new THREE.Vector2()}
+};
+
+const mat = new THREE.ShaderMaterial({
+  uniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader:`
+    attribute vec3 aFrom; attribute vec3 aTo; attribute float aSeed;
+    uniform float uTime, uMorph, uSize; uniform vec2 uPointer;
+    varying float vGlow; varying float vMix;
+
+    vec3 hash3(float n){ return fract(sin(vec3(n,n+1.7,n+3.3))*vec3(43758.5,22578.1,19642.3)); }
+
+    // cheap curl-ish drift
+    vec3 drift(vec3 p, float t){
+      return vec3(
+        sin(p.y*.75+t*.55)+cos(p.z*.62-t*.42),
+        sin(p.z*.68+t*.48)+cos(p.x*.71-t*.36),
+        sin(p.x*.63+t*.51)+cos(p.y*.66-t*.45));
+    }
+
+    void main(){
+      vec3 h = hash3(aSeed*137.0);
+      // per-point staggered easing so the field peels rather than snaps
+      float lead = h.x*0.42;
+      float m = clamp((uMorph - lead) / (1.0 - 0.42), 0.0, 1.0);
+      m = m*m*(3.0-2.0*m);
+      m = m*m*(3.0-2.0*m);
+      vMix = m;
+
+      vec3 pos = mix(aFrom, aTo, m);
+
+      // billow: strongest mid-transition
+      float billow = sin(m*3.14159);
+      pos += drift(pos*0.5, uTime*0.6 + h.y*6.28) * billow * (0.85 + h.z*1.1);
+
+      // idle breathing
+      pos += drift(pos*0.35, uTime*0.22) * 0.085;
+
+      // pointer repulsion in view space
+      vec4 mv = modelViewMatrix * vec4(pos,1.0);
+      vec2 d = mv.xy - uPointer*7.0;
+      float f = 1.6 / (1.0 + dot(d,d)*0.55);
+      mv.xy += normalize(d + 0.0001) * f;
+
+      vGlow = billow * 0.9 + 0.12 + h.z*0.2;
+      gl_Position = projectionMatrix * mv;
+      gl_PointSize = uSize * (14.0 / -mv.z) * (0.55 + h.x*0.9);
+    }`,
+  fragmentShader:`
+    precision highp float;
+    uniform vec3 uHueA, uHueB; varying float vGlow; varying float vMix;
+    void main(){
+      vec2 c = gl_PointCoord - 0.5;
+      float d = dot(c,c);
+      if(d > 0.25) discard;
+      float a = smoothstep(0.25, 0.0, d);
+      vec3 col = mix(uHueB, uHueA, clamp(vGlow,0.0,1.0));
+      col += vec3(0.35,0.55,0.7) * pow(a,3.0) * vGlow;
+      gl_FragColor = vec4(col, a * (0.16 + vGlow*0.42));
+    }`
+});
+
+const points = new THREE.Points(geo, mat);
+scene.add(points);
+
+/* ---------- post ---------- */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.85, 0.72, 0.16);
+composer.addPass(bloom);
+composer.setSize(innerWidth,innerHeight);
+
+/* ---------- morph control ---------- */
+let cur=0, target=1, morphing=false, tMorph=0;
+function goTo(next){
+  if(morphing || next===cur) return;
+  geo.attributes.aFrom.array.set(attrs[cur]);
+  geo.attributes.aTo.array.set(attrs[next]);
+  geo.attributes.aFrom.needsUpdate = geo.attributes.aTo.needsUpdate = true;
+  target=next; morphing=true; tMorph=0;
+}
+document.querySelectorAll('.shapes button').forEach(b=>{
+  b.onclick=()=>{ const i=+b.dataset.i; if(i===cur||morphing) return;
+    document.querySelectorAll('.shapes button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); goTo(i); };
+});
+// gentle autoplay until the user takes over
+let autoplay=true, lastAuto=performance.now();
+document.querySelector('.shapes').addEventListener('click',()=>autoplay=false);
+
+/* ---------- interaction ---------- */
+const ptr={x:0,y:0,tx:0,ty:0}; let drag=false,px=0,py=0,rotX=0,rotY=0,vrX=0,vrY=0;
+addEventListener('pointermove',e=>{
+  ptr.tx=(e.clientX/innerWidth-.5)*2; ptr.ty=-(e.clientY/innerHeight-.5)*2;
+  if(drag){
+    // direct 1:1 tracking, and remember the motion so it can carry after release
+    const dx=(e.clientX-px)*0.005, dy=(e.clientY-py)*0.005;
+    rotY += dx; rotX += dy;
+    rotX = Math.max(-1.1, Math.min(1.1, rotX));
+    vrY = dx; vrX = dy;                 // last-frame velocity = throw seed
+    px=e.clientX; py=e.clientY;
+    if(e.cancelable) e.preventDefault();
+  }
+},{passive:false});
+addEventListener('pointerdown',e=>{
+  if(e.target.closest('button,a')) return;   // let UI keep normal behaviour
+  drag=true; px=e.clientX; py=e.clientY; autoplay=false;
+  document.body.classList.add('dragging');
+  if(e.cancelable) e.preventDefault();
+},{passive:false});
+addEventListener('pointerup',()=>{drag=false;document.body.classList.remove('dragging');});
+addEventListener('pointercancel',()=>{drag=false;document.body.classList.remove('dragging');});
+// belt-and-braces: no accidental text selection mid-drag
+addEventListener('selectstart',e=>{ if(drag) e.preventDefault(); });
+addEventListener('dragstart',e=>{ if(drag) e.preventDefault(); });
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight);
+});
+
+/* ---------- scroll reveal + camera dolly ---------- */
+const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('in')),{threshold:.25});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+let scrollN=0;
+addEventListener('scroll',()=>{
+  const max=document.body.scrollHeight-innerHeight;
+  scrollN = max>0 ? scrollY/max : 0;
+},{passive:true});
+
+/* ---------- loop ---------- */
+const clock=new THREE.Clock();
+let spin=0;
+let fpsAcc=0,fpsN=0,fpsT=0;
+const fpsEl=document.getElementById('s-fps');
+document.getElementById('s-pts').textContent=(COUNT/1000)+'k';
+
+function frame(){
+  requestAnimationFrame(frame);
+  const dt=Math.min(clock.getDelta(),.05), t=clock.elapsedTime;
+  uniforms.uTime.value=t;
+
+  if(morphing){
+    tMorph=Math.min(tMorph+dt/2.1,1);
+    uniforms.uMorph.value=tMorph;
+    if(tMorph>=1){ morphing=false; cur=target; uniforms.uMorph.value=0;
+      geo.attributes.aFrom.array.set(attrs[cur]); geo.attributes.aFrom.needsUpdate=true;
+      geo.attributes.aTo.array.set(attrs[cur]);   geo.attributes.aTo.needsUpdate=true; }
+  } else if(autoplay && performance.now()-lastAuto>4200){
+    lastAuto=performance.now();
+    const n=(cur+1)%gens.length;
+    document.querySelectorAll('.shapes button').forEach(x=>x.classList.toggle('on', +x.dataset.i===n));
+    goTo(n);
+  }
+
+  ptr.x+=(ptr.tx-ptr.x)*.06; ptr.y+=(ptr.ty-ptr.y)*.06;
+  uniforms.uPointer.value.set(ptr.x,ptr.y);
+
+  // after release: carry the throw with a long, smooth decay
+  if(!drag){ rotY+=vrY; rotX+=vrX; vrY*=0.955; vrX*=0.955;
+    rotX = Math.max(-1.1, Math.min(1.1, rotX));
+    if(Math.abs(vrY)<1e-6) vrY=0; if(Math.abs(vrX)<1e-6) vrX=0; }
+  rotX=Math.max(-1.1,Math.min(1.1,rotX));
+  spin += 0.0009;                       // slow ambient turn
+  points.rotation.y = spin + rotY;      // drag/throw applied at full strength
+  points.rotation.x += (rotX + ptr.y*0.10 - points.rotation.x)*0.18;
+
+  // keep the field centred and stable while reading; no growth, no drift
+  camera.position.z += (15 - Math.abs(ptr.x)*0.3 - camera.position.z)*0.05;
+  camera.position.x += (ptr.x*0.9 - camera.position.x)*0.045;
+  camera.position.y += (ptr.y*0.7 - camera.position.y)*0.045;
+  camera.lookAt(0,0,0);
+
+  bloom.strength = 0.72 + Math.sin(t*.5)*0.08 + (morphing? 0.45*Math.sin(tMorph*3.14159):0);
+
+  composer.render();
+
+  fpsAcc+=1/Math.max(dt,1e-4); fpsN++; fpsT+=dt;
+  if(fpsT>0.5){ fpsEl.textContent=Math.round(fpsAcc/fpsN); fpsAcc=fpsN=fpsT=0; }
+}
+frame();
+</script>
+</body>
+</html>
