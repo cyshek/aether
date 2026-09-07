@@ -98,6 +98,7 @@
 </head>
 <body>
 <canvas id="gl"></canvas>
+<div id="boot"><div class="bootinner"><b>ÆTHER</b><i>compiling shaders…</i></div></div>
 <div class="grain"></div><div class="vig"></div>
 
 <header>
@@ -156,8 +157,17 @@
   <button data-i="2">Galaxy</button>
   <button data-i="3">Cube</button>
   <button data-i="4">Wave</button>
+  <button data-i="5">Name</button>
 </div>
 <div class="scroll-hint">Scroll</div>
+<div id="legend">
+  <b>Controls</b>
+  <span><em>Click</em> a shape to morph</span>
+  <span><em>Drag</em> to spin · release to throw</span>
+  <span><em>Move</em> cursor to push particles</span>
+  <span><em>Hold Space</em> for vortex</span>
+  <span><em>Scroll</em> to read</span>
+</div>
 
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js",
@@ -204,7 +214,25 @@ function wave(){
   const x=(R()-.5)*13, z=(R()-.5)*13, d=Math.hypot(x,z);
   return [x, Math.sin(d*1.15)*1.9*Math.exp(-d*.16), z];
 }
-const gens=[sphere,torus,galaxy,cube,wave];
+// sample glyph pixels off an offscreen canvas -> point cloud
+function makeText(str){
+  const c=document.createElement('canvas'), W=c.width=1000, H=c.height=280;
+  const x=c.getContext('2d',{willReadFrequently:true});
+  x.fillStyle='#000'; x.fillRect(0,0,W,H);
+  x.fillStyle='#fff';
+  x.font='800 200px Inter,Helvetica,Arial,sans-serif';
+  x.textAlign='center'; x.textBaseline='middle';
+  x.fillText(str, W/2, H/2);
+  const d=x.getImageData(0,0,W,H).data, pts=[];
+  for(let y=0;y<H;y+=2) for(let px=0;px<W;px+=2)
+    if(d[(y*W+px)*4]>128) pts.push([(px/W-.5)*15, -(y/H-.5)*4.2]);
+  return ()=>{
+    if(!pts.length) return [(R()-.5)*10,(R()-.5)*3,0];
+    const p=pts[(R()*pts.length)|0];
+    return [p[0]+(R()-.5)*.07, p[1]+(R()-.5)*.07, (R()-.5)*.6];
+  };
+}
+const gens=[sphere,torus,galaxy,cube,wave,makeText('CYRUS')];
 
 const geo = new THREE.BufferGeometry();
 const attrs = gens.map((g,gi)=>{
@@ -223,14 +251,15 @@ geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 20);
 const uniforms = {
   uTime:{value:0}, uMorph:{value:0}, uSize:{value:renderer.getPixelRatio()*2.3},
   uHueA:{value:new THREE.Color('#4de2ff')}, uHueB:{value:new THREE.Color('#b073ff')},
-  uPointer:{value:new THREE.Vector2()}
+  uPointer:{value:new THREE.Vector2()},
+  uVortex:{value:0}
 };
 
 const mat = new THREE.ShaderMaterial({
   uniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
   vertexShader:`
     attribute vec3 aFrom; attribute vec3 aTo; attribute float aSeed;
-    uniform float uTime, uMorph, uSize; uniform vec2 uPointer;
+    uniform float uTime, uMorph, uSize, uVortex; uniform vec2 uPointer;
     varying float vGlow; varying float vMix;
 
     vec3 hash3(float n){ return fract(sin(vec3(n,n+1.7,n+3.3))*vec3(43758.5,22578.1,19642.3)); }
@@ -261,13 +290,22 @@ const mat = new THREE.ShaderMaterial({
       // idle breathing
       pos += drift(pos*0.35, uTime*0.22) * 0.085;
 
+      // vortex (hold SPACE): swirl inward, collapse toward the core
+      if(uVortex > 0.001){
+        float r = length(pos.xz) + 0.0001;
+        float a = atan(pos.z, pos.x) + uVortex * (2.4 / (r*0.35 + 0.6));
+        float pull = mix(1.0, 0.22, uVortex);
+        pos.xz = vec2(cos(a), sin(a)) * r * pull;
+        pos.y *= mix(1.0, 0.35, uVortex);
+      }
+
       // pointer repulsion in view space
       vec4 mv = modelViewMatrix * vec4(pos,1.0);
       vec2 d = mv.xy - uPointer*7.0;
       float f = 1.6 / (1.0 + dot(d,d)*0.55);
       mv.xy += normalize(d + 0.0001) * f;
 
-      vGlow = billow * 0.9 + 0.12 + h.z*0.2;
+      vGlow = billow * 0.9 + 0.12 + h.z*0.2 + uVortex*0.5;
       gl_Position = projectionMatrix * mv;
       gl_PointSize = uSize * (14.0 / -mv.z) * (0.55 + h.x*0.9);
     }`,
@@ -287,6 +325,48 @@ const mat = new THREE.ShaderMaterial({
 
 const points = new THREE.Points(geo, mat);
 scene.add(points);
+
+/* ---------- infinite 3D grid floor ---------- */
+const gridMat = new THREE.ShaderMaterial({
+  transparent:true, depthWrite:false, side:THREE.DoubleSide,
+  blending:THREE.AdditiveBlending,
+  uniforms:{ uTime:{value:0}, uVortex:{value:0}, uGrid:{value:new THREE.Color('#2ad8c0')} },
+  vertexShader:`
+    varying vec2 vUv; varying vec3 vW;
+    void main(){ vUv=uv; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz;
+      gl_Position=projectionMatrix*viewMatrix*w; }`,
+  fragmentShader:`
+    precision highp float;
+    varying vec2 vUv; varying vec3 vW;
+    uniform float uTime, uVortex; uniform vec3 uGrid;
+    // crisp antialiased line mask at a given cell size
+    float lines(vec2 p, float cell, float w){
+      vec2 g = abs(fract(p/cell - 0.5) - 0.5) / fwidth(p/cell);
+      float l = min(g.x, g.y);
+      return 1.0 - smoothstep(0.0, w, l);
+    }
+    void main(){
+      vec2 p = vW.xz;
+      p.y += uTime * 0.55;                       // slow drift toward viewer
+      float fine  = lines(p, 1.0, 1.2);
+      float major = lines(p, 5.0, 1.4);
+      float m = max(fine*0.34, major*0.75);
+      float d = length(vW.xz);
+      m *= smoothstep(46.0, 8.0, d);             // fade into the dark
+      float pulse = 0.85 + 0.15*sin(uTime*0.7 - d*0.16);
+      vec3 col = uGrid * (0.55 + uVortex*1.1) * pulse;
+      gl_FragColor = vec4(col, m*0.5);
+      if(gl_FragColor.a < 0.004) discard;
+    }`
+});
+const grid = new THREE.Mesh(new THREE.PlaneGeometry(120,120), gridMat);
+grid.rotation.x = -Math.PI/2;
+grid.position.y = -7.2;
+scene.add(grid);
+const gridTop = new THREE.Mesh(new THREE.PlaneGeometry(120,120), gridMat);
+gridTop.rotation.x = -Math.PI/2;
+gridTop.position.y = 11.5;
+scene.add(gridTop);
 
 /* ---------- post ---------- */
 const composer = new EffectComposer(renderer);
@@ -343,6 +423,11 @@ addEventListener('resize',()=>{
   renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight);
 });
 
+/* ---------- vortex (hold SPACE) ---------- */
+let vortexOn=false, vortex=0;
+addEventListener('keydown',e=>{ if(e.code==='Space'){ vortexOn=true; autoplay=false; e.preventDefault(); }});
+addEventListener('keyup',  e=>{ if(e.code==='Space') vortexOn=false; });
+
 /* ---------- scroll reveal + camera dolly ---------- */
 const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('in')),{threshold:.25});
 document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
@@ -354,7 +439,7 @@ addEventListener('scroll',()=>{
 
 /* ---------- loop ---------- */
 const clock=new THREE.Clock();
-let spin=0;
+let spin=0, booted=false;
 let fpsAcc=0,fpsN=0,fpsT=0;
 const fpsEl=document.getElementById('s-fps');
 document.getElementById('s-pts').textContent=(COUNT/1000)+'k';
@@ -380,6 +465,11 @@ function frame(){
   ptr.x+=(ptr.tx-ptr.x)*.06; ptr.y+=(ptr.ty-ptr.y)*.06;
   uniforms.uPointer.value.set(ptr.x,ptr.y);
 
+  vortex += ((vortexOn?1:0) - vortex) * (vortexOn?0.09:0.05);
+  uniforms.uVortex.value=vortex;
+  gridMat.uniforms.uTime.value=t;
+  gridMat.uniforms.uVortex.value=vortex;
+
   // after release: carry the throw with a long, smooth decay
   if(!drag){ rotY+=vrY; rotX+=vrX; vrY*=0.955; vrX*=0.955;
     rotX = Math.max(-1.1, Math.min(1.1, rotX));
@@ -395,9 +485,12 @@ function frame(){
   camera.position.y += (ptr.y*0.7 - camera.position.y)*0.045;
   camera.lookAt(0,0,0);
 
-  bloom.strength = 0.72 + Math.sin(t*.5)*0.08 + (morphing? 0.45*Math.sin(tMorph*3.14159):0);
+  bloom.strength = 0.72 + Math.sin(t*.5)*0.08 + (morphing? 0.45*Math.sin(tMorph*3.14159):0)
+                 + vortex*0.5;
 
   composer.render();
+  if(!booted){ booted=true; const b=document.getElementById('boot');
+    b.classList.add('gone'); setTimeout(()=>b.remove(),800); }
 
   fpsAcc+=1/Math.max(dt,1e-4); fpsN++; fpsT+=dt;
   if(fpsT>0.5){ fpsEl.textContent=Math.round(fpsAcc/fpsN); fpsAcc=fpsN=fpsT=0; }
