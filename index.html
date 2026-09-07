@@ -34,6 +34,29 @@
     border:3px solid #04060b;background-clip:padding-box}
   ::-webkit-scrollbar-thumb:hover{background:#6b7689;background-clip:padding-box}
 
+  /* controls legend */
+  #legend{position:fixed;top:50%;right:26px;transform:translateY(-50%);z-index:15;
+    display:flex;flex-direction:column;gap:7px;text-align:right;pointer-events:none;
+    opacity:.82;transition:opacity .4s}
+  #legend b{font-size:9px;letter-spacing:.34em;text-transform:uppercase;color:var(--accent);
+    margin-bottom:3px;font-weight:700}
+  #legend span{font-size:10.5px;letter-spacing:.05em;color:var(--dim);line-height:1.35}
+  #legend em{font-style:normal;color:var(--ink);font-weight:600}
+  body.dragging #legend{opacity:.25}
+
+  /* boot overlay */
+  #boot{position:fixed;inset:0;z-index:40;background:#04060b;display:flex;
+    align-items:center;justify-content:center;transition:opacity .7s;pointer-events:none}
+  #boot.gone{opacity:0}
+  .bootinner{text-align:center}
+  .bootinner b{display:block;font-size:13px;letter-spacing:.5em;margin-bottom:14px}
+  .bootinner i{font-style:normal;font-size:10px;letter-spacing:.28em;text-transform:uppercase;
+    color:var(--dim)}
+  .bootinner::after{content:"";display:block;width:120px;height:1px;margin:18px auto 0;
+    background:linear-gradient(90deg,transparent,var(--accent),transparent);
+    animation:sweep 1.3s infinite}
+  @keyframes sweep{0%{opacity:.15}50%{opacity:1}100%{opacity:.15}}
+
   /* kill text selection while dragging the field */
   body.dragging{user-select:none;-webkit-user-select:none;cursor:grabbing}
   body.dragging *{cursor:grabbing !important}
@@ -384,6 +407,20 @@ function goTo(next){
   geo.attributes.aFrom.needsUpdate = geo.attributes.aTo.needsUpdate = true;
   target=next; morphing=true; tMorph=0;
 }
+
+/* ---------- intro: condense out of a scattered shell ---------- */
+const scatter = new Float32Array(COUNT*3);
+for(let i=0;i<COUNT;i++){
+  const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1), r=17+Math.random()*13;
+  scatter[i*3]  = Math.sin(b)*Math.cos(a)*r;
+  scatter[i*3+1]= Math.sin(b)*Math.sin(a)*r;
+  scatter[i*3+2]= Math.cos(b)*r;
+}
+let intro=true;
+geo.attributes.aFrom.array.set(scatter);
+geo.attributes.aTo.array.set(attrs[0]);
+geo.attributes.aFrom.needsUpdate = geo.attributes.aTo.needsUpdate = true;
+cur=0; target=0; morphing=true; tMorph=0;
 document.querySelectorAll('.shapes button').forEach(b=>{
   b.onclick=()=>{ const i=+b.dataset.i; if(i===cur||morphing) return;
     document.querySelectorAll('.shapes button').forEach(x=>x.classList.remove('on'));
@@ -450,12 +487,12 @@ function frame(){
   uniforms.uTime.value=t;
 
   if(morphing){
-    tMorph=Math.min(tMorph+dt/2.1,1);
+    tMorph=Math.min(tMorph + dt/(intro?3.0:2.1), 1);
     uniforms.uMorph.value=tMorph;
-    if(tMorph>=1){ morphing=false; cur=target; uniforms.uMorph.value=0;
+    if(tMorph>=1){ morphing=false; intro=false; cur=target; uniforms.uMorph.value=0;
       geo.attributes.aFrom.array.set(attrs[cur]); geo.attributes.aFrom.needsUpdate=true;
       geo.attributes.aTo.array.set(attrs[cur]);   geo.attributes.aTo.needsUpdate=true; }
-  } else if(autoplay && performance.now()-lastAuto>4200){
+  } else if(autoplay && !intro && performance.now()-lastAuto>4200){
     lastAuto=performance.now();
     const n=(cur+1)%gens.length;
     document.querySelectorAll('.shapes button').forEach(x=>x.classList.toggle('on', +x.dataset.i===n));
@@ -480,7 +517,8 @@ function frame(){
   points.rotation.x += (rotX + ptr.y*0.10 - points.rotation.x)*0.18;
 
   // keep the field centred and stable while reading; no growth, no drift
-  camera.position.z += (15 - Math.abs(ptr.x)*0.3 - camera.position.z)*0.05;
+  const introPull = intro ? 13.0*Math.pow(1-tMorph,2.2) : 0;
+  camera.position.z += (15 + introPull - Math.abs(ptr.x)*0.3 - camera.position.z)*0.05;
   camera.position.x += (ptr.x*0.9 - camera.position.x)*0.045;
   camera.position.y += (ptr.y*0.7 - camera.position.y)*0.045;
   camera.lookAt(0,0,0);
