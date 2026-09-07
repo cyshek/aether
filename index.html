@@ -487,7 +487,7 @@ function frame(){
   uniforms.uTime.value=t;
 
   if(morphing){
-    tMorph=Math.min(tMorph + dt/(intro?3.0:2.1), 1);
+    tMorph=Math.min(tMorph + dt/(intro?5.0:2.1), 1);
     uniforms.uMorph.value=tMorph;
     if(tMorph>=1){ morphing=false; intro=false; cur=target; uniforms.uMorph.value=0;
       geo.attributes.aFrom.array.set(attrs[cur]); geo.attributes.aFrom.needsUpdate=true;
