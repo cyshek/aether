@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>ÆTHER II — one million</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+<meta name="theme-color" content="#04060b" />
+<meta property="og:title" content="ÆTHER II — one million particles" />
+<meta property="og:description" content="1,048,576 particles simulated on the GPU. Float textures, ping-pong fragment shaders, curl-noise flow field." />
+<style>
+  :root{ --ink:#e9edf7; --dim:#7f8aa3; --accent:#6cf0d0; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{min-height:100%;background:#04060b;color:var(--ink);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden}
+  ::-webkit-scrollbar{width:12px}
+  ::-webkit-scrollbar-track{background:rgba(255,255,255,.03)}
+  ::-webkit-scrollbar-thumb{background:#4a5364;border-radius:99px;
+    border:3px solid #04060b;background-clip:padding-box}
+  body.dragging{user-select:none;-webkit-user-select:none;cursor:grabbing}
+  body.dragging *{cursor:grabbing !important}
+  canvas#gl{position:fixed;inset:0;width:100vw;height:100vh;display:block;z-index:0;cursor:grab;
+    -webkit-user-select:none;user-select:none}
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>")}
+  .vig{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%,transparent 35%,rgba(2,4,9,.85) 100%)}
+
+  header{position:fixed;top:0;left:0;right:0;z-index:5;display:flex;justify-content:space-between;
+    align-items:center;padding:26px 34px;mix-blend-mode:difference}
+  .brand{font-weight:700;letter-spacing:.42em;font-size:12px;text-transform:uppercase}
+  nav{display:flex;gap:26px}
+  nav a{color:var(--dim);text-decoration:none;font-size:11px;letter-spacing:.22em;
+    text-transform:uppercase;transition:color .3s}
+  nav a:hover{color:var(--ink)}
+
+  main{position:relative;z-index:4}
+  section{min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+    padding:0 clamp(24px,7vw,140px)}
+  .hero h1{font-size:clamp(48px,11vw,172px);line-height:.86;font-weight:800;letter-spacing:-.045em;
+    text-transform:uppercase}
+  .hero h1 span{display:block}
+  .hero h1 .ghost{-webkit-text-stroke:1px rgba(233,237,247,.55);color:transparent}
+  .sub{margin-top:30px;max-width:46ch;color:var(--dim);font-size:15px;line-height:1.75}
+  .kicker{font-size:11px;letter-spacing:.35em;text-transform:uppercase;color:var(--accent);
+    margin-bottom:26px}
+  .panel{max-width:660px;backdrop-filter:blur(14px);background:rgba(8,12,22,.42);
+    border:1px solid rgba(233,237,247,.09);border-radius:20px;padding:clamp(28px,4vw,52px)}
+  .panel h2{font-size:clamp(28px,5vw,54px);letter-spacing:-.03em;line-height:1.03;margin-bottom:20px}
+  .panel p{color:var(--dim);line-height:1.8;font-size:15px}
+  .panel p + p{margin-top:16px}
+  .stats{display:flex;gap:44px;margin-top:38px;flex-wrap:wrap}
+  .stat b{display:block;font-size:32px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .stat small{color:var(--dim);font-size:10px;letter-spacing:.24em;text-transform:uppercase}
+
+  .shapes{position:fixed;left:34px;bottom:34px;z-index:6;display:flex;gap:9px;flex-wrap:wrap;
+    max-width:min(70vw,720px)}
+  .shapes button{appearance:none;cursor:pointer;background:rgba(255,255,255,.04);color:var(--dim);
+    border:1px solid rgba(233,237,247,.14);border-radius:999px;padding:9px 17px;font-size:10px;
+    letter-spacing:.2em;text-transform:uppercase;transition:.25s;font-family:inherit}
+  .shapes button:hover{color:var(--ink);border-color:rgba(233,237,247,.4)}
+  .shapes button.on{background:var(--accent);color:#04060b;border-color:var(--accent);font-weight:700}
+
+  #legend{position:fixed;top:50%;right:26px;transform:translateY(-50%);z-index:15;
+    display:flex;flex-direction:column;gap:7px;text-align:right;pointer-events:none;
+    opacity:.82;transition:opacity .4s}
+  #legend b{font-size:9px;letter-spacing:.34em;text-transform:uppercase;color:var(--accent);
+    margin-bottom:3px;font-weight:700}
+  #legend span{font-size:10.5px;letter-spacing:.05em;color:var(--dim);line-height:1.35}
+  #legend em{font-style:normal;color:var(--ink);font-weight:600}
+  body.dragging #legend{opacity:.25}
+
+  #boot{position:fixed;inset:0;z-index:40;background:#04060b;display:flex;
+    align-items:center;justify-content:center;transition:opacity .7s}
+  #boot.gone{opacity:0;pointer-events:none}
+  .bootinner{text-align:center}
+  .bootinner b{display:block;font-size:13px;letter-spacing:.5em;margin-bottom:14px}
+  .bootinner i{font-style:normal;font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--dim)}
+  .bootinner::after{content:"";display:block;width:120px;height:1px;margin:18px auto 0;
+    background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:sweep 1.3s infinite}
+  @keyframes sweep{0%{opacity:.15}50%{opacity:1}100%{opacity:.15}}
+  #fail{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+    background:#04060b;text-align:center;padding:40px}
+  #fail p{color:var(--dim);font-size:13px;line-height:2;letter-spacing:.06em;max-width:46ch}
+  #fail a{color:var(--accent)}
+  footer{position:relative;z-index:4;padding:70px clamp(24px,7vw,140px) 110px;color:var(--dim);
+    font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+  footer a{color:var(--dim)}
+  @media (max-width:640px){.shapes{left:18px;bottom:18px}#legend{display:none}nav{display:none}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="grain"></div><div class="vig"></div>
+<div id="boot"><div class="bootinner"><b>ÆTHER II</b><i>allocating one million particles…</i></div></div>
+<div id="fail"><p id="failmsg"></p></div>
+
+<header>
+  <div class="brand">Æther II</div>
+  <nav><a href="#sim">Sim</a><a href="#how">How</a><a href="../">v1</a></nav>
+</header>
+
+<main>
+  <section class="hero">
+    <div>
+      <div class="kicker" id="k">1,048,576 points · simulated on the GPU</div>
+      <h1><span>A Million</span><span class="ghost">Things</span><span>Moving</span></h1>
+      <p class="sub">Nothing here is calculated on the CPU. Every particle's position and velocity
+      lives inside a floating-point texture, and the entire simulation advances by drawing two
+      full-screen quads per frame. Forces are real: a spring pulling toward the target shape,
+      a curl-noise flow field, your cursor, and gravity toward a collapsing core.</p>
+    </div>
+  </section>
+
+  <section id="sim">
+    <div class="panel">
+      <h2>State as an image.</h2>
+      <p>A 1024×1024 RGBA float texture holds one million positions — one particle per texel.
+      A second holds velocities. Each frame a fragment shader reads both, integrates the forces,
+      and writes to a spare pair of textures. Next frame they swap. This is ping-ponging, and it
+      is how you simulate a million bodies without ever touching JavaScript.</p>
+      <p>The vertex shader then reads that position texture directly, so geometry never leaves
+      the GPU. The draw call sends one million vertices and zero coordinates.</p>
+      <div class="stats">
+        <div class="stat"><b id="s-pts">1.05M</b><small>particles</small></div>
+        <div class="stat"><b id="s-fps">—</b><small>fps</small></div>
+        <div class="stat"><b id="s-tex">1024²</b><small>sim texture</small></div>
+        <div class="stat"><b>2</b><small>draw calls / step</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="panel">
+      <h2>Curl noise is<br/>why it looks alive.</h2>
+      <p>Straight noise makes particles jitter. Curl noise takes the curl of a noise field, which
+      is divergence-free — the flow can never compress into a point or blow apart. That constraint
+      is what smoke, ink and water all share, and it's why the drift here reads as fluid rather
+      than random.</p>
+      <p>Hold space and a gravity well opens at the origin. Particles fall in along curved paths
+      because they keep the angular momentum the flow field gave them — nobody scripted the spiral.</p>
+    </div>
+  </section>
+</main>
+
+<footer>Æther II · GPGPU particle simulation · <a href="../">see version one</a></footer>
+
+<div class="shapes">
+  <button data-i="0" class="on">Sphere</button>
+  <button data-i="1">Torus</button>
+  <button data-i="2">Galaxy</button>
+  <button data-i="3">Cube</button>
+  <button data-i="4">Wave</button>
+  <button data-i="5">Name</button>
+</div>
+<div id="legend">
+  <b>Controls</b>
+  <span><em>Click</em> a shape to re-form</span>
+  <span><em>Drag</em> to spin · release to throw</span>
+  <span><em>Move</em> cursor to push the field</span>
+  <span><em>Hold Space</em> for gravity well</span>
+  <span><em>Scroll</em> to read</span>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+"three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {GPUComputationRenderer} from 'three/addons/misc/GPUComputationRenderer.js';
+
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:false, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth, innerHeight);
+
+function die(msg){
+  document.getElementById('boot').classList.add('gone');
+  document.getElementById('fail').style.display='flex';
+  document.getElementById('failmsg').innerHTML = msg;
+}
+
+// float render targets are required to store positions
+const gl = renderer.getContext();
+const isWebGL2 = renderer.capabilities.isWebGL2;
+if(!isWebGL2 && !gl.getExtension('OES_texture_float')){
+  die("This browser can't render to floating-point textures, which the simulation needs.<br><br>Try Chrome, Edge or Firefox on a desktop GPU — or see <a href='../'>version one</a>, which runs anywhere.");
+  throw new Error('no float textures');
+}
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, .1, 200);
+camera.position.set(0,0,17);
+
+/* ---------------- shape targets, baked into a data texture ---------------- */
+const TEX = 1024;                    // 1024^2 = 1,048,576 particles
+const COUNT = TEX*TEX;
+const R = Math.random;
+
+function sphere(i,n){
+  const y = 1-(i/(n-1))*2, r = Math.sqrt(Math.max(0,1-y*y));
+  const th = Math.PI*(3-Math.sqrt(5))*i;
+  return [Math.cos(th)*r*5.2, y*5.2, Math.sin(th)*r*5.2];
+}
+function torus(){
+  const u=R()*Math.PI*2, v=R()*Math.PI*2, Rr=4.0, r=1.6;
+  return [(Rr+r*Math.cos(v))*Math.cos(u), r*Math.sin(v), (Rr+r*Math.cos(v))*Math.sin(u)];
+}
+function galaxy(){
+  const arms=4, t=Math.pow(R(),.55), a=Math.floor(R()*arms)/arms*Math.PI*2;
+  const ang=a+t*3.4, rad=t*7.4, sp=(1-t)*.9+.15;
+  return [Math.cos(ang)*rad+(R()-.5)*sp, (R()-.5)*sp*1.2*(1-t*.7), Math.sin(ang)*rad+(R()-.5)*sp];
+}
+function cube(){
+  const s=3.9, f=(R()*6)|0, a=(R()-.5)*2*s, b=(R()-.5)*2*s;
+  return [[s,a,b],[-s,a,b],[a,s,b],[a,-s,b],[a,b,s],[a,b,-s]][f];
+}
+function wave(){
+  const x=(R()-.5)*15, z=(R()-.5)*15, d=Math.hypot(x,z);
+  return [x, Math.sin(d*1.15)*2.1*Math.exp(-d*.16), z];
+}
+function makeText(str){
+  const c=document.createElement('canvas'), W=c.width=1400, H=c.height=400;
+  const x=c.getContext('2d',{willReadFrequently:true});
+  x.fillStyle='#000'; x.fillRect(0,0,W,H);
+  x.fillStyle='#fff'; x.font='800 300px Inter,Helvetica,Arial,sans-serif';
+  x.textAlign='center'; x.textBaseline='middle'; x.fillText(str, W/2, H/2);
+  const d=x.getImageData(0,0,W,H).data, pts=[];
+  for(let y=0;y<H;y++) for(let px=0;px<W;px++)
+    if(d[(y*W+px)*4]>128) pts.push([(px/W-.5)*28, -(y/H-.5)*8]);
+  return ()=>{
+    if(!pts.length) return [0,0,0];
+    const p=pts[(R()*pts.length)|0];
+    return [p[0]+(R()-.5)*.06, p[1]+(R()-.5)*.06, (R()-.5)*.8];
+  };
+}
+const gens=[sphere,torus,galaxy,cube,wave,makeText('CYRUS')];
+
+// one RGBA float texture per shape: xyz = target position
+function bakeTarget(gen){
+  const data = new Float32Array(COUNT*4);
+  for(let i=0;i<COUNT;i++){
+    const p = gen(i, COUNT);
+    data[i*4]=p[0]; data[i*4+1]=p[1]; data[i*4+2]=p[2]; data[i*4+3]=Math.random();
+  }
+  const t = new THREE.DataTexture(data, TEX, TEX, THREE.RGBAFormat, THREE.FloatType);
+  t.needsUpdate = true;
+  return t;
+}
+const targets = gens.map(bakeTarget);
+
+/* ---------------- GPGPU: position + velocity ping-pong ---------------- */
+const gpu = new GPUComputationRenderer(TEX, TEX, renderer);
+if(!isWebGL2) gpu.setDataType(THREE.HalfFloatType);
+
+const pos0 = gpu.createTexture(), vel0 = gpu.createTexture();
+{
+  const p = pos0.image.data, v = vel0.image.data, src = targets[0].image.data;
+  for(let i=0;i<COUNT;i++){
+    // start scattered in a shell so the first form-up is visible
+    const a=Math.random()*Math.PI*2, b=Math.acos(2*Math.random()-1), r=14+Math.random()*10;
+    p[i*4]=Math.sin(b)*Math.cos(a)*r; p[i*4+1]=Math.sin(b)*Math.sin(a)*r; p[i*4+2]=Math.cos(b)*r;
+    p[i*4+3]=src[i*4+3];
+    v[i*4]=v[i*4+1]=v[i*4+2]=0; v[i*4+3]=1;
+  }
+}
+
+const velShader = `
+uniform sampler2D uTargetA, uTargetB;
+uniform float uTime, uDt, uBlend, uVortex, uPointerActive;
+uniform vec3 uPointer;
+
+vec3 hash3(vec2 p){
+  vec3 q = vec3(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)), dot(p,vec2(419.2,371.9)));
+  return fract(sin(q)*43758.5453);
+}
+float noise(vec3 p){
+  vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  vec2 uv=(i.xy+vec2(37.0,17.0)*i.z)+f.xy;
+  float a=fract(sin(dot(uv,vec2(127.1,311.7)))*43758.5453);
+  float b=fract(sin(dot(uv+vec2(1.0,0.0),vec2(127.1,311.7)))*43758.5453);
+  float c=fract(sin(dot(uv+vec2(0.0,1.0),vec2(127.1,311.7)))*43758.5453);
+  float d=fract(sin(dot(uv+vec2(1.0,1.0),vec2(127.1,311.7)))*43758.5453);
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+vec3 snoiseVec3(vec3 p){
+  return vec3(noise(p)*2.0-1.0, noise(p+vec3(31.4,17.7,9.1))*2.0-1.0, noise(p+vec3(7.7,53.1,21.3))*2.0-1.0);
+}
+// curl of the noise field: divergence-free, so it flows like a fluid
+vec3 curlNoise(vec3 p){
+  const float e = 0.28;
+  vec3 dx=vec3(e,0.0,0.0), dy=vec3(0.0,e,0.0), dz=vec3(0.0,0.0,e);
+  vec3 px0=snoiseVec3(p-dx), px1=snoiseVec3(p+dx);
+  vec3 py0=snoiseVec3(p-dy), py1=snoiseVec3(p+dy);
+  vec3 pz0=snoiseVec3(p-dz), pz1=snoiseVec3(p+dz);
+  float x=(py1.z-py0.z)-(pz1.y-pz0.y);
+  float y=(pz1.x-pz0.x)-(px1.z-px0.z);
+  float z=(px1.y-px0.y)-(py1.x-py0.x);
+  return normalize(vec3(x,y,z) / (2.0*e)+1e-6);
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / resolution.xy;
+  vec4 P = texture2D(texturePosition, uv);
+  vec4 V = texture2D(textureVelocity, uv);
+  vec3 pos = P.xyz, vel = V.xyz;
+  float seed = P.w;
+
+  // where this particle is trying to be, blended between two shapes
+  vec3 tgt = mix(texture2D(uTargetA,uv).xyz, texture2D(uTargetB,uv).xyz, uBlend);
+
+  // spring toward the target, stiffness varies per particle so it arrives unevenly
+  vec3 toTarget = tgt - pos;
+  float stiff = 2.6 + seed*3.4;
+  vel += toTarget * stiff * uDt;
+
+  // curl-noise flow field: the thing that makes it look like fluid
+  float scale = 0.16;
+  vec3 flow = curlNoise(pos*scale + vec3(0.0, uTime*0.05, 0.0));
+  float flowAmt = 3.1 * (0.45 + seed);
+  vel += flow * flowAmt * uDt;
+
+  // cursor pushes particles away in world space
+  if(uPointerActive > 0.5){
+    vec3 d = pos - uPointer;
+    float dist2 = dot(d,d);
+    vel += normalize(d + 1e-5) * (14.0 / (dist2 + 1.4)) * uDt;
+  }
+
+  // gravity well (space held): pull to origin + tangential swirl
+  if(uVortex > 0.001){
+    vec3 d = -pos;
+    float r = length(d) + 0.001;
+    vel += (d/r) * uVortex * 26.0 * uDt;
+    vec3 tang = normalize(cross(pos, vec3(0.0,1.0,0.0)) + 1e-5);
+    vel += tang * uVortex * 13.0 * uDt;
+  }
+
+  vel *= 0.90;                       // damping keeps the system stable
+  gl_FragColor = vec4(vel, 1.0);
+}`;
+
+const posShader = `
+uniform float uDt;
+void main(){
+  vec2 uv = gl_FragCoord.xy / resolution.xy;
+  vec4 P = texture2D(texturePosition, uv);
+  vec4 V = texture2D(textureVelocity, uv);
+  gl_FragColor = vec4(P.xyz + V.xyz * uDt, P.w);
+}`;
+
+const velVar = gpu.addVariable('textureVelocity', velShader, vel0);
+const posVar = gpu.addVariable('texturePosition', posShader, pos0);
+gpu.setVariableDependencies(velVar, [velVar, posVar]);
+gpu.setVariableDependencies(posVar, [velVar, posVar]);
+
+const vu = velVar.material.uniforms;
+vu.uTargetA={value:targets[0]}; vu.uTargetB={value:targets[1]};
+vu.uTime={value:0}; vu.uDt={value:0.016}; vu.uBlend={value:0};
+vu.uVortex={value:0}; vu.uPointer={value:new THREE.Vector3()};
+vu.uPointerActive={value:0};
+posVar.material.uniforms.uDt={value:0.016};
+
+const err = gpu.init();
+if(err){ die("The GPU simulation failed to start.<br><br><code style='color:#7f8aa3'>"+err+"</code><br><br>Try <a href='../'>version one</a>."); throw new Error(err); }
+
+/* ---------------- render the million ---------------- */
+const refs = new Float32Array(COUNT*2);
+for(let i=0;i<COUNT;i++){ refs[i*2]=(i%TEX)/TEX; refs[i*2+1]=Math.floor(i/TEX)/TEX; }
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(COUNT*3),3));
+geo.setAttribute('aRef', new THREE.BufferAttribute(refs,2));
+geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 60);
+
+const drawMat = new THREE.ShaderMaterial({
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  uniforms:{
+    tPos:{value:null}, tVel:{value:null},
+    uSize:{value:renderer.getPixelRatio()*2.0},
+    uHotA:{value:new THREE.Color('#4de2ff')}, uHotB:{value:new THREE.Color('#b073ff')}
+  },
+  vertexShader:`
+    attribute vec2 aRef;
+    uniform sampler2D tPos, tVel;
+    uniform float uSize;
+    varying float vSpeed;
+    void main(){
+      vec3 p = texture2D(tPos, aRef).xyz;
+      vSpeed = length(texture2D(tVel, aRef).xyz);
+      vec4 mv = modelViewMatrix * vec4(p,1.0);
+      gl_Position = projectionMatrix * mv;
+      gl_PointSize = uSize * (13.0 / max(-mv.z, 0.1));
+    }`,
+  fragmentShader:`
+    precision highp float;
+    uniform vec3 uHotA, uHotB;
+    varying float vSpeed;
+    void main(){
+      vec2 c = gl_PointCoord - 0.5;
+      float d = dot(c,c);
+      if(d > 0.25) discard;
+      float a = smoothstep(0.25, 0.0, d);
+      float heat = clamp(vSpeed*0.16, 0.0, 1.0);
+      vec3 col = mix(uHotB, uHotA, heat);
+      col += vec3(0.4,0.6,0.75) * pow(a,3.0) * heat;
+      gl_FragColor = vec4(col, a * (0.09 + heat*0.30));
+    }`
+});
+const points = new THREE.Points(geo, drawMat);
+scene.add(points);
+
+/* ---------------- grid backdrop (matches v1) ---------------- */
+const gridMat = new THREE.ShaderMaterial({
+  transparent:true, depthWrite:false, side:THREE.DoubleSide, blending:THREE.AdditiveBlending,
+  uniforms:{ uTime:{value:0}, uVortex:{value:0}, uGrid:{value:new THREE.Color('#9fb0c8')} },
+  vertexShader:`varying vec3 vW;
+    void main(){ vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz;
+      gl_Position=projectionMatrix*viewMatrix*w; }`,
+  fragmentShader:`
+    precision highp float;
+    varying vec3 vW; uniform float uTime, uVortex; uniform vec3 uGrid;
+    float lines(vec2 p, float cell, float w){
+      vec2 g = abs(fract(p/cell - 0.5) - 0.5) / fwidth(p/cell);
+      return 1.0 - smoothstep(0.0, w, min(g.x,g.y));
+    }
+    void main(){
+      vec2 p = vW.xz; p.y += uTime*0.55;
+      float m = max(lines(p,1.0,1.2)*0.30, lines(p,5.0,1.4)*0.62);
+      float d = length(vW.xz);
+      m *= smoothstep(52.0, 8.0, d);
+      float pulse = 0.88 + 0.12*sin(uTime*0.7 - d*0.16);
+      gl_FragColor = vec4(uGrid*(0.42 + uVortex*0.9)*pulse, m*0.30);
+      if(gl_FragColor.a < 0.004) discard;
+    }`
+});
+for(const y of [-8.5, 13.0]){
+  const g = new THREE.Mesh(new THREE.PlaneGeometry(140,140), gridMat);
+  g.rotation.x = -Math.PI/2; g.position.y = y; scene.add(g);
+}
+
+/* ---------------- post ---------------- */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.78, 0.7, 0.18);
+composer.addPass(bloom);
+composer.setSize(innerWidth,innerHeight);
+
+/* ---------------- interaction ---------------- */
+let cur=0, blending=false, blendT=0;
+function goTo(next){
+  if(blending || next===cur) return;
+  vu.uTargetA.value = targets[cur];
+  vu.uTargetB.value = targets[next];
+  vu.uBlend.value = 0; blendT = 0; blending = true; pending = next;
+}
+let pending=0;
+document.querySelectorAll('.shapes button').forEach(b=>{
+  b.onclick=()=>{ const i=+b.dataset.i; if(i===cur||blending) return;
+    document.querySelectorAll('.shapes button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); autoplay=false; goTo(i); };
+});
+let autoplay=true, lastAuto=performance.now();
+
+const ptr={x:0,y:0,tx:0,ty:0};
+let drag=false, px=0, py=0, rotX=0, rotY=0, vrX=0, vrY=0;
+addEventListener('pointermove',e=>{
+  ptr.tx=(e.clientX/innerWidth-.5)*2; ptr.ty=-(e.clientY/innerHeight-.5)*2;
+  if(drag){
+    const dx=(e.clientX-px)*0.005, dy=(e.clientY-py)*0.005;
+    rotY+=dx; rotX=Math.max(-1.1,Math.min(1.1,rotX+dy));
+    vrY=dx; vrX=dy; px=e.clientX; py=e.clientY;
+    if(e.cancelable) e.preventDefault();
+  }
+},{passive:false});
+addEventListener('pointerdown',e=>{
+  if(e.target.closest('button,a')) return;
+  drag=true; px=e.clientX; py=e.clientY; autoplay=false;
+  document.body.classList.add('dragging');
+  if(e.cancelable) e.preventDefault();
+},{passive:false});
+addEventListener('pointerup',()=>{drag=false;document.body.classList.remove('dragging');});
+addEventListener('pointercancel',()=>{drag=false;document.body.classList.remove('dragging');});
+addEventListener('selectstart',e=>{ if(drag) e.preventDefault(); });
+
+let vortexOn=false, vortex=0;
+addEventListener('keydown',e=>{ if(e.code==='Space'){ vortexOn=true; autoplay=false; e.preventDefault(); }});
+addEventListener('keyup',  e=>{ if(e.code==='Space') vortexOn=false; });
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight);
+});
+
+/* ---------------- loop ---------------- */
+const clock = new THREE.Clock();
+let spin=0, booted=false, fpsAcc=0, fpsN=0, fpsT=0;
+const fpsEl=document.getElementById('s-fps');
+document.getElementById('s-pts').textContent=(COUNT/1e6).toFixed(2)+'M';
+document.getElementById('k').textContent = COUNT.toLocaleString()+' points · simulated on the GPU';
+
+function frame(){
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.033), t = clock.elapsedTime;
+
+  if(blending){
+    blendT = Math.min(blendT + dt/1.9, 1);
+    vu.uBlend.value = blendT*blendT*(3-2*blendT);
+    if(blendT>=1){ blending=false; cur=pending; vu.uTargetA.value=targets[cur]; vu.uBlend.value=0; }
+  } else if(autoplay && performance.now()-lastAuto > 5200){
+    lastAuto=performance.now();
+    const n=(cur+1)%gens.length;
+    document.querySelectorAll('.shapes button').forEach(x=>x.classList.toggle('on', +x.dataset.i===n));
+    goTo(n);
+  }
+
+  ptr.x+=(ptr.tx-ptr.x)*.06; ptr.y+=(ptr.ty-ptr.y)*.06;
+  vortex += ((vortexOn?1:0)-vortex) * (vortexOn?0.08:0.045);
+
+  // cursor -> world ray at the field's depth
+  const ndc = new THREE.Vector3(ptr.x, ptr.y, 0.5).unproject(camera);
+  const dir = ndc.sub(camera.position).normalize();
+  const hit = camera.position.clone().add(dir.multiplyScalar(camera.position.length()));
+  vu.uPointer.value.copy(hit);
+  vu.uPointerActive.value = 1;
+
+  vu.uTime.value = t;
+  vu.uDt.value = dt;
+  posVar.material.uniforms.uDt.value = dt;
+  vu.uVortex.value = vortex;
+  gpu.compute();
+
+  drawMat.uniforms.tPos.value = gpu.getCurrentRenderTarget(posVar).texture;
+  drawMat.uniforms.tVel.value = gpu.getCurrentRenderTarget(velVar).texture;
+
+  if(!drag){ rotY+=vrY; rotX+=vrX; vrY*=0.955; vrX*=0.955;
+    rotX=Math.max(-1.1,Math.min(1.1,rotX));
+    if(Math.abs(vrY)<1e-6) vrY=0; if(Math.abs(vrX)<1e-6) vrX=0; }
+  spin += 0.0007;
+  points.rotation.y = spin + rotY;
+  points.rotation.x += (rotX + ptr.y*0.08 - points.rotation.x)*0.18;
+
+  camera.position.z += (17 - Math.abs(ptr.x)*0.3 - vortex*2.2 - camera.position.z)*0.05;
+  camera.position.x += (ptr.x*0.9 - camera.position.x)*0.045;
+  camera.position.y += (ptr.y*0.7 - camera.position.y)*0.045;
+  camera.lookAt(0,0,0);
+
+  gridMat.uniforms.uTime.value = t;
+  gridMat.uniforms.uVortex.value = vortex;
+  bloom.strength = 0.7 + Math.sin(t*.5)*0.07 + (blending?0.4*Math.sin(blendT*3.14159):0) + vortex*0.5;
+
+  composer.render();
+  if(!booted){ booted=true; const b=document.getElementById('boot');
+    b.classList.add('gone'); setTimeout(()=>b.remove(),800); }
+
+  fpsAcc += 1/Math.max(dt,1e-4); fpsN++; fpsT += dt;
+  if(fpsT>0.5){ fpsEl.textContent=Math.round(fpsAcc/fpsN); fpsAcc=fpsN=fpsT=0; }
+}
+frame();
+</script>
+</body>
+</html>
