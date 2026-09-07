@@ -216,20 +216,20 @@ function wave(){
 }
 // sample glyph pixels off an offscreen canvas -> point cloud
 function makeText(str){
-  const c=document.createElement('canvas'), W=c.width=1000, H=c.height=280;
+  const c=document.createElement('canvas'), W=c.width=1400, H=c.height=400;
   const x=c.getContext('2d',{willReadFrequently:true});
   x.fillStyle='#000'; x.fillRect(0,0,W,H);
   x.fillStyle='#fff';
-  x.font='800 200px Inter,Helvetica,Arial,sans-serif';
+  x.font='800 300px Inter,Helvetica,Arial,sans-serif';
   x.textAlign='center'; x.textBaseline='middle';
   x.fillText(str, W/2, H/2);
   const d=x.getImageData(0,0,W,H).data, pts=[];
   for(let y=0;y<H;y+=2) for(let px=0;px<W;px+=2)
-    if(d[(y*W+px)*4]>128) pts.push([(px/W-.5)*15, -(y/H-.5)*4.2]);
+    if(d[(y*W+px)*4]>128) pts.push([(px/W-.5)*26, -(y/H-.5)*7.4]);
   return ()=>{
     if(!pts.length) return [(R()-.5)*10,(R()-.5)*3,0];
     const p=pts[(R()*pts.length)|0];
-    return [p[0]+(R()-.5)*.07, p[1]+(R()-.5)*.07, (R()-.5)*.6];
+    return [p[0]+(R()-.5)*.085, p[1]+(R()-.5)*.085, (R()-.5)*.7];
   };
 }
 const gens=[sphere,torus,galaxy,cube,wave,makeText('CYRUS')];
@@ -330,7 +330,7 @@ scene.add(points);
 const gridMat = new THREE.ShaderMaterial({
   transparent:true, depthWrite:false, side:THREE.DoubleSide,
   blending:THREE.AdditiveBlending,
-  uniforms:{ uTime:{value:0}, uVortex:{value:0}, uGrid:{value:new THREE.Color('#2ad8c0')} },
+  uniforms:{ uTime:{value:0}, uVortex:{value:0}, uGrid:{value:new THREE.Color('#9fb0c8')} },
   vertexShader:`
     varying vec2 vUv; varying vec3 vW;
     void main(){ vUv=uv; vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz;
@@ -350,12 +350,12 @@ const gridMat = new THREE.ShaderMaterial({
       p.y += uTime * 0.55;                       // slow drift toward viewer
       float fine  = lines(p, 1.0, 1.2);
       float major = lines(p, 5.0, 1.4);
-      float m = max(fine*0.34, major*0.75);
+      float m = max(fine*0.30, major*0.62);
       float d = length(vW.xz);
       m *= smoothstep(46.0, 8.0, d);             // fade into the dark
-      float pulse = 0.85 + 0.15*sin(uTime*0.7 - d*0.16);
-      vec3 col = uGrid * (0.55 + uVortex*1.1) * pulse;
-      gl_FragColor = vec4(col, m*0.5);
+      float pulse = 0.88 + 0.12*sin(uTime*0.7 - d*0.16);
+      vec3 col = uGrid * (0.42 + uVortex*0.9) * pulse;
+      gl_FragColor = vec4(col, m*0.30);
       if(gl_FragColor.a < 0.004) discard;
     }`
 });
